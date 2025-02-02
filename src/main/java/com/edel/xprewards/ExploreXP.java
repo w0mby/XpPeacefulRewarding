@@ -34,8 +34,8 @@ public class ExploreXP implements Listener {
     private final HashMap<UUID, Integer> playerExplorationStreaks = new HashMap<>();
     private final HashMap<UUID, String> playerLastChunk = new HashMap<>();
 
-    private File dataFile;
-    private FileConfiguration dataConfig;
+    private final File dataFile;
+    private final FileConfiguration dataConfig;
     private final Random random = new Random();
     public ExploreXP(JavaPlugin plugin) {
         dataFile = new File(plugin.getDataFolder(), "explored_chunks.yml");
