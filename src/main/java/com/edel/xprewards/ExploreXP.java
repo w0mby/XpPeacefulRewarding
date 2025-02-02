@@ -51,6 +51,12 @@ public class ExploreXP implements Listener {
         loadExploredChunks();
     }
 
+    private void initializePlayerData(UUID playerId) {
+        playerExploredChunks.putIfAbsent(playerId, new HashSet<>());
+        playerExplorationStreaks.putIfAbsent(playerId, 0);
+        playerLastChunk.putIfAbsent(playerId, "");
+    }
+
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
@@ -74,6 +80,10 @@ public class ExploreXP implements Listener {
         playerLastChunk.put(playerId, chunkKey);
     }
 
+    private String generateChunkKey(Chunk chunk) {
+        return chunk.getWorld().getName() + ";" + chunk.getX() + ";" + chunk.getZ();
+    }
+
     private static boolean stillInTheSameChunk(String chunkKey, String lastChunkKey) {
         return chunkKey.equals(lastChunkKey);
     }
@@ -83,16 +93,6 @@ public class ExploreXP implements Listener {
         if (random.nextDouble() < PEACEFUL_ENTITY_SPAWN_CHANCE) {
             spawnPeacefulEntity(player);
         }
-    }
-
-    private void initializePlayerData(UUID playerId) {
-        playerExploredChunks.putIfAbsent(playerId, new HashSet<>());
-        playerExplorationStreaks.putIfAbsent(playerId, 0);
-        playerLastChunk.putIfAbsent(playerId, "");
-    }
-
-    private String generateChunkKey(Chunk chunk) {
-        return chunk.getWorld().getName() + ";" + chunk.getX() + ";" + chunk.getZ();
     }
 
     private boolean isNewChunk(UUID playerId, String chunkKey) {
@@ -183,7 +183,10 @@ public class ExploreXP implements Listener {
     }
 
     private void spawnPeacefulEntity(Player player) {
-        EntityType[] peacefulEntities = {EntityType.SHEEP, EntityType.COW, EntityType.CHICKEN, EntityType.PIG};
+        if (player.getVehicle() != null && player.getVehicle().getType() == EntityType.BOAT) {
+            return;
+        }
+        EntityType[] peacefulEntities = {EntityType.SHEEP, EntityType.COW, EntityType.CHICKEN, EntityType.PIG, EntityType.HORSE, EntityType.PARROT};
         EntityType selectedEntity = peacefulEntities[random.nextInt(peacefulEntities.length)];
         Location location = player.getLocation();
         player.getWorld().spawnEntity(location, selectedEntity);
