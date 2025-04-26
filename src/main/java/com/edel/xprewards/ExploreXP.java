@@ -25,9 +25,9 @@ import java.util.UUID;
 
 public class ExploreXP implements Listener {
 
-    private static final double TREASURE_CHANCE = 0.03;
-    private static final double MONSTER_SPAWN_CHANCE = 0.1;
-    public static final double PEACEFUL_ENTITY_SPAWN_CHANCE = 0.02;
+    private static final double TREASURE_CHANCE = 0.02;
+    private static final double MONSTER_SPAWN_CHANCE = 0.04;
+    public static final double PEACEFUL_ENTITY_SPAWN_CHANCE = 0.01;
     private static final int BASE_XP_REWARDS = 5;
     private static final double STREAK_XP_MULTIPLIER = 1.5;
     private final HashMap<UUID, HashSet<String>> playerExploredChunks = new HashMap<>();
@@ -148,13 +148,11 @@ public class ExploreXP implements Listener {
                 new Treasure(new ItemStack(Material.REDSTONE, random.nextInt(8) + 1), 25) // 25% chance
         };
 
-        // Calculate total weight
         int totalWeight = 0;
         for (Treasure treasure : treasures) {
             totalWeight += treasure.weight;
         }
 
-        // Select a random treasure based on weight
         int randomIndex = random.nextInt(totalWeight);
         int currentWeight = 0;
         for (Treasure treasure : treasures) {

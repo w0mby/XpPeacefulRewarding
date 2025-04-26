@@ -11,9 +11,10 @@ public class XPRewards extends JavaPlugin {
         exploreXP = new ExploreXP(this);
 
         getServer().getPluginManager().registerEvents(new BreakXP(), this);
-        getServer().getPluginManager().registerEvents(new HarvestXP(), this);
+        getServer().getPluginManager().registerEvents(new HarvestXP(this), this);
         getServer().getPluginManager().registerEvents(exploreXP, this);
         getServer().getPluginManager().registerEvents(new ChatWordGame(this), this);
+        getServer().getPluginManager().registerEvents(new GunpowderFeature(this), this);
 
         getLogger().info("XPRewards plugin has been enabled!");
     }

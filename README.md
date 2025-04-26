@@ -23,6 +23,11 @@ Welcome to the XPRewards plugin for Minecraft! This plugin enhances your gamepla
 - **Randomized Words**: Each game features a randomly selected word from a customizable list.
 - **Time-Limited Challenge**: Be the first to type the word correctly before time runs out to win XP.
 
+### Gunpowder Feature
+- **Crafting Recipe**: Craft a special "Gunpowder Mix" using a shaped recipe with charcoal, flint, and sand.
+- **Furnace Reaction**: Smelt the Gunpowder Mix in a furnace to produce gunpowder with a twist—a chance for the furnace to trigger an explosion.
+- **Explosive Effect**: When the special mix is smelted, there is a 10% chance for an explosion at the furnace location, complete with sound, particles, and a knockback effect on nearby players, adding an element of risk and excitement.
+
 ## Installation
 
 1. Download the latest version of the XPRewards plugin.
