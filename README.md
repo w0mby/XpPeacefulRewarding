@@ -41,8 +41,8 @@ Welcome to the XPRewards plugin for Minecraft! This plugin enhances your gamepla
 ## Installation
 
 1. Download the latest version of the XPRewards plugin.
-   2. Place the plugin JAR file into your server's `plugins` directory.
-   3. Start or restart your Minecraft server.
+2. Place the plugin JAR file into your server's `plugins` directory.
+3. Start or restart your Minecraft server.
 
 ## Configuration
 
