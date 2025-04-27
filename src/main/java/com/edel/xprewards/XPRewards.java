@@ -4,7 +4,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public class XPRewards extends JavaPlugin {
 
-    private ExploreXP exploreXP; // Declare ExploreXP so we can call saveExploredChunks()
+    private ExploreXP exploreXP;
+    private PassDayChallengeManager challengeManager;
 
     @Override
     public void onEnable() {
@@ -16,12 +17,14 @@ public class XPRewards extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ChatWordGame(this), this);
         getServer().getPluginManager().registerEvents(new GunpowderFeature(this), this);
 
+        challengeManager = new PassDayChallengeManager(this);
+        getServer().getPluginManager().registerEvents(new RitualListener(challengeManager), this);
+
         getLogger().info("XPRewards plugin has been enabled!");
     }
 
     @Override
     public void onDisable() {
-        // Save explored chunks when the plugin is disabled
         if (exploreXP != null) {
             exploreXP.saveExploredChunks();
         }
