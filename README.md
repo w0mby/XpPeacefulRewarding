@@ -38,6 +38,16 @@ Welcome to the XPRewards plugin for Minecraft! This plugin enhances your gamepla
      - **Visual and Sound Effects**: Enjoy immersive particle effects and sounds during rituals and on challenge completion.
      - **Server-Wide Events**: All online players are notified when a challenge begins and when someone completes it.
 
+### Frankenstein's Abomination Assembly (New!)
+- **Multiblock Structure**: Build a special assembly platform using iron blocks, stone brick slabs, lightning rod, and other components.
+- **Material Collection**: Gather specific materials (rotten flesh, bones, emerald, water bottle, redstone) to infuse your creation with life.
+- **Two-Phase Ritual**: Activate the lever to prepare the assembly, then use flint and steel on the lightning rod to complete the ritual (or wait for a natural lightning strike during a storm!)
+- **Custom Mob Creation**: Create a unique zombie villager with special properties, abilities, and custom appearance.
+- **Dramatic Effects**: Experience immersive visual and sound effects throughout the ritual process.
+- **Redemption System**: Cure your abomination with a golden apple and weakness potion to transform it into a special villager with unique trades.
+- **Special Rewards**: Defeat your abomination to earn valuable drops and XP rewards, or redeem it for a valuable trading partner.
+- **Risk and Strategy**: Manage cooldowns and gather the right materials for successful creation.
+
 ## Installation
 
 1. Download the latest version of the XPRewards plugin.
@@ -58,7 +68,9 @@ Welcome to the XPRewards plugin for Minecraft! This plugin enhances your gamepla
 
 - **More Activities**: We plan to add more activities and events that reward players with XP.
 - **Customizable Rewards**: Allow server admins to customize XP rewards for different activities.
-  - **Additional Challenge Types**: Expand the Pass the Day Challenge system with more objectives and special events.
-  - **Seasonal Events**: Implement special challenges during in-game seasons or real-world holidays.
+- **Additional Challenge Types**: Expand the Pass the Day Challenge system with more objectives and special events.
+- **Monster Creation Variants**: Add new variants and abilities to the Frankenstein's Abomination Assembly.
+- **Seasonal Events**: Implement special challenges during in-game seasons or real-world holidays.
+- **Configuration Options**: Add more configuration options for server admins to customize feature behavior.
 
 Enjoy a more rewarding Minecraft experience with XPRewards! If you have any suggestions or feedback, feel free to reach out.

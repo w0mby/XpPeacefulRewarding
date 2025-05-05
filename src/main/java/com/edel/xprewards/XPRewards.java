@@ -6,6 +6,7 @@ public class XPRewards extends JavaPlugin {
 
     private ExploreXP exploreXP;
     private PassDayChallengeManager challengeManager;
+    private FrankensteinAssembly frankensteinAssembly;
 
     @Override
     public void onEnable() {
@@ -19,6 +20,11 @@ public class XPRewards extends JavaPlugin {
 
         challengeManager = new PassDayChallengeManager(this);
         getServer().getPluginManager().registerEvents(new RitualListener(challengeManager), this);
+        getLogger().info("Pass day Ritual feature has been enabled!");
+
+        frankensteinAssembly = new FrankensteinAssembly(this);
+        getServer().getPluginManager().registerEvents(frankensteinAssembly, this);
+        getLogger().info("Frankenstein's Abomination Assembly feature has been enabled!");
 
         getLogger().info("XPRewards plugin has been enabled!");
     }
@@ -27,6 +33,10 @@ public class XPRewards extends JavaPlugin {
     public void onDisable() {
         if (exploreXP != null) {
             exploreXP.saveExploredChunks();
+        }
+
+        if (frankensteinAssembly != null) {
+            frankensteinAssembly.saveCooldowns();
         }
 
         getLogger().info("XPRewards plugin has been disabled!");
