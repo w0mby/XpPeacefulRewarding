@@ -1,7 +1,5 @@
 package com.edel.xprewards;
 
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
@@ -9,6 +7,7 @@ import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.type.Switch;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -19,9 +18,11 @@ import org.bukkit.entity.ZombieVillager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
-import org.bukkit.event.entity.EntityInteractEvent;
-import org.bukkit.event.entity.EntitySpawnEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityTransformEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
 import org.bukkit.persistence.PersistentDataType;
@@ -30,16 +31,22 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.potion.PotionData;
 import org.bukkit.potion.PotionType;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 
 public class FrankensteinAssembly implements Listener {
 
@@ -49,8 +56,20 @@ public class FrankensteinAssembly implements Listener {
 
     private final List<Material> requiredMaterials = new ArrayList<>();
     private final Set<Location> activeRitualLocations = new HashSet<>();
+    private final Set<Location> runningRituals = new HashSet<>();
 
     private final Random random = new Random();
+
+    private final List<PotionEffectType> negativeEffects = Arrays.asList(
+        PotionEffectType.POISON,
+        PotionEffectType.BLINDNESS,
+        PotionEffectType.WEAKNESS,
+        PotionEffectType.SLOWNESS,
+        PotionEffectType.NAUSEA,
+        PotionEffectType.HUNGER,
+        PotionEffectType.DARKNESS,
+        PotionEffectType.UNLUCK
+    );
 
     public FrankensteinAssembly(XPRewards plugin) {
         this.plugin = plugin;
@@ -72,7 +91,12 @@ public class FrankensteinAssembly implements Listener {
         Block clickedBlock = event.getClickedBlock();
 
         if (clickedBlock.getType() == Material.LEVER) {
-            handleLeverActivation(player, clickedBlock);
+            Switch leverData = (Switch) clickedBlock.getBlockData();
+            if (leverData.isPowered()) {
+                handleLeverActivation(player, clickedBlock);
+            } else {
+                player.sendMessage(NamedTextColor.RED + "The lever must be ON to activate the ritual.");
+            }
         }
         else if (clickedBlock.getType() == Material.LIGHTNING_ROD &&
                 player.getInventory().getItemInMainHand().getType() == Material.FLINT_AND_STEEL) {
@@ -81,42 +105,52 @@ public class FrankensteinAssembly implements Listener {
     }
 
     private void handleLeverActivation(Player player, Block leverBlock) {
+        plugin.getLogger().info("Lever activated! Prepare the assembly mechanism!");
         Location structureCenter = findStructureCenter(leverBlock.getLocation());
         if (!isValidStructure(structureCenter)) {
+            plugin.getLogger().info("Invalid structure center found!");
             return;
         }
-
         if (isOnCooldown(player)) {
+            plugin.getLogger().info("Cooldown is still active for this player!");
             long remainingTime = (cooldowns.get(player.getUniqueId()) + COOLDOWN_TIME - System.currentTimeMillis()) / 1000;
-            player.sendMessage(ChatColor.RED + "You must wait " + remainingTime + " seconds before performing another assembly.");
+            player.sendMessage(NamedTextColor.RED + "You must wait " + remainingTime + " seconds before performing another assembly.");
             return;
         }
-
+        plugin.getLogger().info("Starting preparation phase for the assembly mechanism!");
         if (areMaterialsPlaced(structureCenter)) {
+            plugin.getLogger().info("Materials placed! Starting the preparation phase for the assembly mechanism!");
             startPreparationPhase(player, structureCenter);
-            player.sendMessage(ChatColor.GREEN + "You've activated the assembly mechanism! Now use Flint and Steel on the lightning rod to initiate the final phase.");
+            player.sendMessage(NamedTextColor.GREEN + "You've activated the assembly mechanism! Now use Flint and Steel on the lightning rod to initiate the final phase.");
         } else {
-            player.sendMessage(ChatColor.RED + "The assembly requires specific materials to be placed on the structure.");
+            plugin.getLogger().info("Materials not placed");
+            player.sendMessage(NamedTextColor.RED + "The assembly requires specific materials to be placed on the structure.");
             informAboutRequiredMaterials(player);
         }
     }
 
     private void handleLightningRodActivation(Player player, Block rodBlock) {
-        if (!isLightningRodOnValidStructure(rodBlock)) {
+        Location structureCenter = findStructureCenter(rodBlock.getLocation());
+        if (!isValidStructure(structureCenter)) {
             return;
         }
-
-        Location structureCenter = rodBlock.getLocation();
 
         if (!activeRitualLocations.contains(structureCenter)) {
-            player.sendMessage(ChatColor.RED + "You must first activate the lever to prepare the assembly!");
+            player.sendMessage(NamedTextColor.RED + "You must first activate the lever to prepare the assembly!");
             return;
         }
+
+        if (runningRituals.contains(structureCenter)) {
+            player.sendMessage(NamedTextColor.RED + "The ritual is already in progress at this location!");
+            return;
+        }
+
         startRitual(player, structureCenter);
     }
 
     private boolean isLightningRodOnValidStructure(Block rodBlock) {
-        return isValidStructure(rodBlock.getLocation());
+        Location center = findStructureCenter(rodBlock.getLocation());
+        return isValidStructure(center);
     }
 
     private void startPreparationPhase(Player player, Location center) {
@@ -129,18 +163,18 @@ public class FrankensteinAssembly implements Listener {
 
             for (Player p : world.getPlayers()) {
                 if (p.getLocation().distance(center) <= 30) {
-                    p.sendMessage(ChatColor.DARK_PURPLE + "A mysterious energy begins to gather...");
+                    p.sendMessage(NamedTextColor.DARK_PURPLE + "A mysterious energy begins to gather...");
                 }
             }
         }
-
+        plugin.getLogger().info("Preparation phase completed. start a runnable...");
         new BukkitRunnable() {
             @Override
             public void run() {
                 if (activeRitualLocations.contains(center) && world != null) {
                     for (Entity entity : world.getNearbyEntities(center, 10, 10, 10)) {
                         if (entity instanceof Player) {
-                            ((Player) entity).sendMessage(ChatColor.RED + "The energy is fading... you must complete the ritual soon!");
+                            entity.sendMessage(NamedTextColor.RED + "The energy is fading... you must complete the ritual soon!");
                         }
                     }
 
@@ -152,7 +186,7 @@ public class FrankensteinAssembly implements Listener {
                                 activeRitualLocations.remove(center);
                                 for (Entity entity : world.getNearbyEntities(center, 10, 10, 10)) {
                                     if (entity instanceof Player) {
-                                        entity.sendMessage(ChatColor.RED + "The energies have dissipated. The ritual has failed.");
+                                        entity.sendMessage(NamedTextColor.RED + "The energies have dissipated. The ritual has failed.");
                                     }
                                 }
                                 world.spawnParticle(Particle.SMOKE, center.clone().add(0, 1, 0), 50, 1, 0.5, 1, 0.1);
@@ -162,7 +196,7 @@ public class FrankensteinAssembly implements Listener {
                     }.runTaskLater(plugin, 20 * 60); // 1 more minute (60 seconds)
                 }
             }
-        }.runTaskLater(plugin, 20 * 120); // 2 minutes (120 seconds)
+        }.runTaskLater(plugin, 20 * 120);
     }
 
     @EventHandler
@@ -176,6 +210,9 @@ public class FrankensteinAssembly implements Listener {
                 if (isLightningRodOnValidStructure(block)) {
                     Location structureCenter = block.getLocation();
                     if (areMaterialsPlaced(structureCenter)) {
+                        if (runningRituals.contains(structureCenter)) {
+                            return;
+                        }
                         Player nearestPlayer = null;
                         double nearestDistance = Double.MAX_VALUE;
 
@@ -191,7 +228,7 @@ public class FrankensteinAssembly implements Listener {
 
                         if (nearestPlayer != null) {
                             startRitual(nearestPlayer, structureCenter);
-                            nearestPlayer.sendMessage(ChatColor.GOLD + "A lightning strike has activated the assembly!");
+                            nearestPlayer.sendMessage(NamedTextColor.GOLD + "A lightning strike has activated the assembly!");
                         }
                         break;
                     }
@@ -212,10 +249,6 @@ public class FrankensteinAssembly implements Listener {
         return blocks;
     }
 
-    /**
-     * Find the center of the structure based on lever location
-     * The structure is expected to have a specific pattern with the lever at a specific position
-     */
     private Location findStructureCenter(Location leverLocation) {
         Block leverBlock = leverLocation.getBlock();
         // Check for iron blocks in the 4 cardinal directions
@@ -229,10 +262,10 @@ public class FrankensteinAssembly implements Listener {
         // Determine the orientation based on where the iron blocks are found
         if (north.getType() == Material.IRON_BLOCK) {
             // Table extends southward
-            centerLocation = leverLocation.clone().add(0, -1, 2);
+            centerLocation = leverLocation.clone().add(0, -1, -2);
         } else if (south.getType() == Material.IRON_BLOCK) {
             // Table extends northward
-            centerLocation = leverLocation.clone().add(0, -1, -2);
+            centerLocation = leverLocation.clone().add(0, -1, 2);
         } else if (east.getType() == Material.IRON_BLOCK) {
             // Table extends westward
             centerLocation = leverLocation.clone().add(-2, -1, 0);
@@ -240,17 +273,17 @@ public class FrankensteinAssembly implements Listener {
             // Table extends eastward
             centerLocation = leverLocation.clone().add(2, -1, 0);
         }
-
+        plugin.getLogger().info("findStructureCenter-centerLocation:" + centerLocation);
         return centerLocation;
     }
 
     /**
      * Check if the structure at the center location is a valid Frankenstein assembly table
      * The table has a specific pattern of blocks:
-     *  - Iron blocks in a specific pattern forming the table
+     *  - Iron blocks in a line at the center
      *  - Lightning rod at the center for "capturing" lightning
      *  - Redstone components for "powering" the creation
-     *  - Specific decorative blocks for aesthetic
+     *  - slab brick at each side of the ironblock
      */
     private boolean isValidStructure(Location center) {
         if (center == null) return false;
@@ -281,9 +314,6 @@ public class FrankensteinAssembly implements Listener {
 
         Block centerBlock = center.getBlock();
 
-        // The center block should be a lightning rod
-        if (centerBlock.getType() != Material.LIGHTNING_ROD) return false;
-
         // Check the structure pattern based on orientation
         if (orientation.equals("NS")) {
             return checkNorthSouthStructure(centerBlock);
@@ -309,9 +339,13 @@ public class FrankensteinAssembly implements Listener {
             }
         }
 
-        // Check for redstone components on the head and foot
-        if (center.getRelative(0, 0, -2).getRelative(0, 1, 0).getType() != Material.LEVER ||
-            center.getRelative(0, 0, 2).getRelative(0, 1, 0).getType() != Material.REDSTONE_TORCH) {
+        // Check for lever at one end (z = -2, y = 1)
+        if (center.getRelative(0, 0, -2).getRelative(0, 1, 0).getType() != Material.LEVER) {
+            return false;
+        }
+
+        // Check for lightning rod at the other end (z = 2, y = 1)
+        if (center.getRelative(0, 0, 2).getRelative(0, 1, 0).getType() != Material.LIGHTNING_ROD) {
             return false;
         }
 
@@ -336,8 +370,13 @@ public class FrankensteinAssembly implements Listener {
             }
         }
 
-        if (center.getRelative(-2, 0, 0).getRelative(0, 1, 0).getType() != Material.LEVER ||
-            center.getRelative(2, 0, 0).getRelative(0, 1, 0).getType() != Material.REDSTONE_TORCH) {
+        // Check for lever at one end (x = -2, y = 1)
+        if (center.getRelative(-2, 0, 0).getRelative(0, 1, 0).getType() != Material.LEVER) {
+            return false;
+        }
+
+        // Check for lightning rod at the other end (x = 2, y = 1)
+        if (center.getRelative(2, 0, 0).getRelative(0, 1, 0).getType() != Material.LIGHTNING_ROD) {
             return false;
         }
 
@@ -350,19 +389,14 @@ public class FrankensteinAssembly implements Listener {
     private boolean areMaterialsPlaced(Location center) {
         if (center == null) return false;
 
-        Map<Material, Integer> requiredCounts = new HashMap<>();
-        requiredCounts.put(Material.ROTTEN_FLESH, 5);
-        requiredCounts.put(Material.BONE, 3);
-        requiredCounts.put(Material.POTION, 1);
-        requiredCounts.put(Material.EMERALD, 1);
-        requiredCounts.put(Material.REDSTONE, 3);
+        var requiredCounts = getMaterialRequiredCounts();
 
         Map<Material, Integer> foundCounts = new HashMap<>();
         for (Material mat : requiredMaterials) {
             foundCounts.put(mat, 0);
         }
 
-        World world = center.getWorld();
+        var world = center.getWorld();
         if (world == null) return false;
 
         for (Entity entity : world.getNearbyEntities(center, 3, 2, 3)) {
@@ -370,7 +404,7 @@ public class FrankensteinAssembly implements Listener {
                 ItemStack itemStack = item.getItemStack();
 
                 if (requiredMaterials.contains(itemStack.getType())) {
-                    Material material = itemStack.getType();
+                    var material = itemStack.getType();
                     int currentCount = foundCounts.getOrDefault(material, 0);
                     foundCounts.put(material, currentCount + itemStack.getAmount());
                 }
@@ -381,24 +415,43 @@ public class FrankensteinAssembly implements Listener {
             int required = requiredCounts.getOrDefault(material, 1);
             int found = foundCounts.getOrDefault(material, 0);
             if (found < required) {
+                plugin.getLogger().info("areMaterialsPlaced-foundCounts:" + foundCounts);
                 return false;
             }
         }
+        plugin.getLogger().info("Materials placed.");
         return true;
     }
 
+    private Map<Material, Integer> getMaterialRequiredCounts() {
+        Map<Material, Integer> requiredCounts = new HashMap<>();
+        requiredCounts.put(Material.ROTTEN_FLESH, 5);
+        requiredCounts.put(Material.BONE, 3);
+        requiredCounts.put(Material.POTION, 1);
+        requiredCounts.put(Material.EMERALD, 1);
+        requiredCounts.put(Material.REDSTONE, 3);
+        plugin.getLogger().info("areMaterialsPlaced-requiredCounts:" + requiredCounts);
+        return requiredCounts;
+    }
+
     private void informAboutRequiredMaterials(Player player) {
-        player.sendMessage(ChatColor.YELLOW + "The assembly requires the following materials to be dropped on the structure:");
-        player.sendMessage(ChatColor.GRAY + "- 5x " + formatItemName(Material.ROTTEN_FLESH) + " (Body parts)");
-        player.sendMessage(ChatColor.GRAY + "- 3x " + formatItemName(Material.BONE) + " (Skeleton structure)");
-        player.sendMessage(ChatColor.GRAY + "- 1x Water Bottle (Spark of life)");
-        player.sendMessage(ChatColor.GRAY + "- 1x " + formatItemName(Material.EMERALD) + " (Villager essence)");
-        player.sendMessage(ChatColor.GRAY + "- 3x " + formatItemName(Material.REDSTONE) + " (Power source)");
+        player.sendMessage(NamedTextColor.YELLOW + "The assembly requires the following materials to be dropped on the structure:");
+        player.sendMessage(NamedTextColor.GRAY + "- 5x " + formatItemName(Material.ROTTEN_FLESH) + " (Body parts)");
+        player.sendMessage(NamedTextColor.GRAY + "- 3x " + formatItemName(Material.BONE) + " (Skeleton structure)");
+        player.sendMessage(NamedTextColor.GRAY + "- 1x Water Bottle (Spark of life)");
+        player.sendMessage(NamedTextColor.GRAY + "- 1x " + formatItemName(Material.EMERALD) + " (Villager essence)");
+        player.sendMessage(NamedTextColor.GRAY + "- 3x " + formatItemName(Material.REDSTONE) + " (Power source)");
     }
 
     private void startRitual(Player player, Location center) {
+        if (runningRituals.contains(center)) {
+            plugin.getLogger().warning("Ritual already running at this location: " + center);
+            return;
+        }
+        runningRituals.add(center);
         setCooldown(player);
         activeRitualLocations.add(center);
+        consumeMaterials(center);
         broadcastRitualStart(player, center);
         playRitualStartEffects(center);
         scheduleRitualProgress(player, center);
@@ -412,8 +465,8 @@ public class FrankensteinAssembly implements Listener {
             for (Player p : world.getPlayers()) {
                 if (p.getLocation().distance(center) <= 50) { // Only affect nearby players
                     p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_HURT, 0.3f, 0.5f);
-                    p.sendMessage(ChatColor.DARK_PURPLE + "The sky darkens as " + player.getName() +
-                            ChatColor.LIGHT_PURPLE + " begins assembling a Frankenstein's Abomination!");
+                    p.sendMessage(NamedTextColor.DARK_PURPLE + "The sky darkens as " + player.getName() +
+                            NamedTextColor.LIGHT_PURPLE + " begins assembling a Frankenstein's Abomination!");
                 }
             }
             boolean wasStorming = world.hasStorm();
@@ -459,7 +512,7 @@ public class FrankensteinAssembly implements Listener {
         World world = center.getWorld();
         if (world == null) return;
 
-        final double radius = 1.0;
+        final double radius = 2.0;
         final int particlesPerSpiral = 40;
 
         for (int spiral = 0; spiral < spirals; spiral++) {
@@ -556,7 +609,7 @@ public class FrankensteinAssembly implements Listener {
             if (stage == Math.ceil(maxStages / 2.0)) {
                 for (Player p : world.getPlayers()) {
                     if (p.getLocation().distance(center) <= 50) {
-                        p.sendMessage(ChatColor.DARK_RED + "The abomination's parts begin to twitch as energy crackles around the assembly platform...");
+                        p.sendMessage(NamedTextColor.DARK_RED + "The abomination's parts begin to twitch as energy crackles around the assembly platform...");
                     }
                 }
             }
@@ -583,9 +636,8 @@ public class FrankensteinAssembly implements Listener {
                 new BukkitRunnable() {
                     @Override
                     public void run() {
-                        world.spawnParticle(Particle.WITCH,
-                                runeLoc.clone().add(0, height * 0.3, 0),
-                                3, 0.1, 0, 0.1, 0);
+                        Particle enchantParticle = Particle.valueOf("ENCHANTMENT_TABLE");
+                        world.spawnParticle(enchantParticle, runeLoc.clone().add(0, height * 0.3, 0), 3, 0.1, 0, 0.1, 0);
                     }
                 }.runTaskLater(plugin, j * 2);
             }
@@ -617,14 +669,14 @@ public class FrankensteinAssembly implements Listener {
                     // Knockback effect for nearby players
                     for (Player p : world.getPlayers()) {
                         if (p.getLocation().distance(center) <= 10) {
-
+                            //euclidian distance
                             Location playerLoc = p.getLocation();
                             double dx = playerLoc.getX() - center.getX();
                             double dz = playerLoc.getZ() - center.getZ();
                             double length = Math.sqrt(dx * dx + dz * dz);
 
                             if (length > 0) {
-                                double knockbackStrength = 1.0 - (length / 10.0); // Stronger the closer you are
+                                double knockbackStrength = 5.0 - (length / 10.0); // Stronger the closer you are
                                 if (knockbackStrength > 0) {
                                     p.setVelocity(p.getVelocity().add(
                                             new org.bukkit.util.Vector(
@@ -643,7 +695,6 @@ public class FrankensteinAssembly implements Listener {
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    consumeMaterials(center);
                     spawnAbomination(center);
 
                     for (int i = 0; i < 3; i++) {
@@ -664,20 +715,21 @@ public class FrankensteinAssembly implements Listener {
                 public void run() {
                     for (Player p : world.getPlayers()) {
                         if (p.getLocation().distance(center) <= 50) {
-                            p.sendMessage(ChatColor.DARK_RED + "The abomination assembly is complete! " +
-                                    ChatColor.RED + "A new undead being stirs to life!");
+                            p.sendMessage(NamedTextColor.DARK_RED + "The abomination assembly is complete! " +
+                                    NamedTextColor.RED + "A new undead being stirs to life!");
                         }
                     }
 
                     if (player != null && player.isOnline()) {
                         player.giveExp(150);
-                        player.sendMessage(ChatColor.GREEN + "You've been awarded 150 XP for successfully creating an abomination!");
+                        player.sendMessage(NamedTextColor.GREEN + "You've been awarded 150 XP for successfully creating an abomination!");
 
                         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 0.5f);
                         world.spawnParticle(Particle.TOTEM_OF_UNDYING, player.getLocation().add(0, 1, 0),
                                 50, 0.5, 0.5, 0.5, 0.2);
                     }
                     activeRitualLocations.remove(center);
+                    runningRituals.remove(center);
                 }
             }.runTaskLater(plugin, 40L);
         }
@@ -689,12 +741,7 @@ public class FrankensteinAssembly implements Listener {
         World world = center.getWorld();
         if (world == null) return;
 
-        Map<Material, Integer> requiredCounts = new HashMap<>();
-        requiredCounts.put(Material.ROTTEN_FLESH, 5);
-        requiredCounts.put(Material.BONE, 3);
-        requiredCounts.put(Material.HEART_OF_THE_SEA, 1);
-        requiredCounts.put(Material.EMERALD, 1);
-        requiredCounts.put(Material.REDSTONE, 3);
+        var requiredCounts = getMaterialRequiredCounts();
 
         Map<Material, Integer> consumedCounts = new HashMap<>();
         for (Material mat : requiredMaterials) {
@@ -723,8 +770,7 @@ public class FrankensteinAssembly implements Listener {
                             item.setItemStack(itemStack);
                         }
 
-                        world.spawnParticle(Particle.EGG_CRACK, item.getLocation(), 20,
-                                0.1, 0.1, 0.1, 0.05, new ItemStack(material));
+                        world.spawnParticle(Particle.EGG_CRACK, item.getLocation(), 20, 0.1, 0.1, 0.1, 0.05);
                     }
                 }
             }
@@ -740,13 +786,13 @@ public class FrankensteinAssembly implements Listener {
         Location spawnLoc = center.clone().add(0, 1.5, 0);
         ZombieVillager abomination = (ZombieVillager) world.spawnEntity(spawnLoc, EntityType.ZOMBIE_VILLAGER);
 
-        abomination.setCustomName(ChatColor.DARK_RED + "Frankenstein's Abomination");
+        abomination.setCustomName(NamedTextColor.DARK_RED + "Frankenstein's Abomination");
         abomination.setCustomNameVisible(true);
 
-        abomination.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(40.0);
-        abomination.setHealth(40.0);
-        abomination.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(6.0);
-        abomination.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.15);
+        abomination.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(120.0);
+        abomination.setHealth(120.0);
+        abomination.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(15.0);
+        abomination.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(0.35);
 
         abomination.setShouldBurnInDay(false);
         customizeAbominationAppearance(abomination);
@@ -764,7 +810,7 @@ public class FrankensteinAssembly implements Listener {
 
         if (random.nextInt(4) == 0) {
             abomination.setBaby();
-            abomination.setCustomName(ChatColor.DARK_RED + "Junior Abomination");
+            abomination.setCustomName(NamedTextColor.DARK_RED + "Junior Abomination");
         }
         applyRandomEquipment(abomination);
     }
@@ -851,11 +897,7 @@ public class FrankensteinAssembly implements Listener {
         drops.add(new ItemStack(Material.REDSTONE, random.nextInt(7) + 3));
         drops.add(new ItemStack(Material.EMERALD, random.nextInt(3) + 1));
 
-        ItemStack essenceOfUndeath = createCustomItem(
-            Material.GHAST_TEAR,
-            ChatColor.DARK_PURPLE + "Essence of Undeath",
-            ChatColor.ITALIC + "The concentrated life force of a defeated abomination"
-        );
+        ItemStack essenceOfUndeath = createEssenceOfUndeath();
         drops.add(essenceOfUndeath);
 
         int rareDropRoll = random.nextInt(100);
@@ -885,21 +927,17 @@ public class FrankensteinAssembly implements Listener {
         }
     }
 
-    private ItemStack createCustomItem(Material material, String name, String... lore) {
-        ItemStack item = new ItemStack(material);
-        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+    private static @NotNull ItemStack createEssenceOfUndeath() {
+        ItemStack essenceOfUndeath = new ItemStack(Material.GHAST_TEAR);
+        org.bukkit.inventory.meta.ItemMeta meta = essenceOfUndeath.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(name);
-            if (lore.length > 0) {
-                List<String> loreList = new ArrayList<>();
-                for (String line : lore) {
-                    loreList.add(line);
-                }
-                meta.setLore(loreList);
-            }
-            item.setItemMeta(meta);
+            meta.setDisplayName(NamedTextColor.DARK_PURPLE + "Essence of Undeath");
+            String[] lore = { TextDecoration.ITALIC + "The concentrated life force of a defeated abomination"};
+            List<String> loreList = new ArrayList<>(Arrays.asList(lore));
+            meta.setLore(loreList);
+            essenceOfUndeath.setItemMeta(meta);
         }
-        return item;
+        return essenceOfUndeath;
     }
 
     private ItemStack createSpecialEnchantedBook() {
@@ -929,10 +967,10 @@ public class FrankensteinAssembly implements Listener {
         }
 
         List<String> lore = new ArrayList<>();
-        lore.add(ChatColor.ITALIC + "" + ChatColor.DARK_PURPLE + "Arcane knowledge from beyond the grave");
+        lore.add(TextDecoration.ITALIC + "" + NamedTextColor.DARK_PURPLE + "Arcane knowledge from beyond the grave");
         meta.setLore(lore);
 
-        meta.setDisplayName(ChatColor.DARK_PURPLE + "Tome of Forbidden Knowledge");
+        meta.setDisplayName(NamedTextColor.DARK_PURPLE + "Tome of Forbidden Knowledge");
 
         book.setItemMeta(meta);
         return book;
@@ -946,28 +984,28 @@ public class FrankensteinAssembly implements Listener {
         switch (potionType) {
             case 0:
                 meta.setBasePotionData(new org.bukkit.potion.PotionData(PotionType.STRENGTH, true, true));
-                meta.setDisplayName(ChatColor.RED + "Elixir of Abominable Strength");
-                meta.setLore(List.of(ChatColor.GRAY + "The raw power of the abomination flows through this flask"));
+                meta.setDisplayName(NamedTextColor.RED + "Elixir of Abominable Strength");
+                meta.setLore(List.of(NamedTextColor.GRAY + "The raw power of the abomination flows through this flask"));
                 break;
             case 1:
                 meta.setBasePotionData(new org.bukkit.potion.PotionData(PotionType.REGENERATION, true, true));
-                meta.setDisplayName(ChatColor.LIGHT_PURPLE + "Ichor of Undying Flesh");
-                meta.setLore(List.of(ChatColor.GRAY + "The abomination's ability to regenerate its wounds"));
+                meta.setDisplayName(NamedTextColor.LIGHT_PURPLE + "Ichor of Undying Flesh");
+                meta.setLore(List.of(NamedTextColor.GRAY + "The abomination's ability to regenerate its wounds"));
                 break;
             case 2:
                 meta.setBasePotionData(new PotionData(PotionType.NIGHT_VISION, false, true));
-                meta.setDisplayName(ChatColor.BLUE + "Vision of the Dead");
-                meta.setLore(List.of(ChatColor.GRAY + "See through the darkness as the undead do"));
+                meta.setDisplayName(NamedTextColor.BLUE + "Vision of the Dead");
+                meta.setLore(List.of(NamedTextColor.GRAY + "See through the darkness as the undead do"));
                 break;
             case 3:
                 meta.setBasePotionData(new PotionData(PotionType.SLOW_FALLING, false, true));
-                meta.setDisplayName(ChatColor.WHITE + "Ethereal Descent");
-                meta.setLore(List.of(ChatColor.GRAY + "Float gently like a departing spirit"));
+                meta.setDisplayName(NamedTextColor.WHITE + "Ethereal Descent");
+                meta.setLore(List.of(NamedTextColor.GRAY + "Float gently like a departing spirit"));
                 break;
             case 4:
-                meta.setBasePotionData(new PotionData(PotionType.FIRE_RESISTANCE, false, true));
-                meta.setDisplayName(ChatColor.GOLD + "Frankenstein's Flame Ward");
-                meta.setLore(List.of(ChatColor.GRAY + "The abomination's fear of fire, distilled into protection"));
+                meta.setBasePotionData(new PotionData(PotionType.LONG_FIRE_RESISTANCE, false, true));
+                meta.setDisplayName(NamedTextColor.GOLD + "Frankenstein's Flame Ward");
+                meta.setLore(List.of(NamedTextColor.GRAY + "The abomination's fear of fire, distilled into protection"));
                 break;
         }
 
@@ -1004,10 +1042,10 @@ public class FrankensteinAssembly implements Listener {
         org.bukkit.inventory.meta.ItemMeta meta = armor.getItemMeta();
         if (meta != null) {
             String itemType = armorType.toString().split("_")[1].toLowerCase();
-            meta.setDisplayName(ChatColor.AQUA + "Frankenstein's " + capitalize(itemType));
+            meta.setDisplayName(NamedTextColor.AQUA + "Frankenstein's " + capitalize(itemType));
             meta.setLore(List.of(
-                ChatColor.GRAY + "This " + itemType + " seems to pulse with unnatural energy",
-                ChatColor.DARK_PURPLE + "The abomination's aura lingers within"
+                    NamedTextColor.GRAY + "This " + itemType + " seems to pulse with unnatural energy",
+                    NamedTextColor.DARK_PURPLE + "The abomination's aura lingers within"
             ));
             armor.setItemMeta(meta);
         }
@@ -1065,10 +1103,10 @@ public class FrankensteinAssembly implements Listener {
             String prefix = namePrefixes[random.nextInt(namePrefixes.length)];
             String suffix = nameSuffixes[random.nextInt(nameSuffixes.length)];
 
-            meta.setDisplayName(ChatColor.RED + prefix + " " + suffix);
+            meta.setDisplayName(NamedTextColor.RED + prefix + " " + suffix);
             meta.setLore(List.of(
-                ChatColor.GRAY + "This weapon channels the rage of the abomination",
-                ChatColor.DARK_RED + "\"It remembers the pain of its unnatural creation\""
+                    NamedTextColor.GRAY + "This weapon channels the rage of the abomination",
+                    NamedTextColor.DARK_RED + "\"It remembers the pain of its unnatural creation\""
             ));
             weapon.setItemMeta(meta);
         }
@@ -1083,11 +1121,11 @@ public class FrankensteinAssembly implements Listener {
             case 0:
                 ItemStack heart = new ItemStack(Material.HEART_OF_THE_SEA);
                 org.bukkit.inventory.meta.ItemMeta heartMeta = heart.getItemMeta();
-                heartMeta.setDisplayName(ChatColor.DARK_RED + "Frankenstein's Heart");
+                heartMeta.setDisplayName(NamedTextColor.DARK_RED + "Frankenstein's Heart");
                 heartMeta.setLore(List.of(
-                    ChatColor.GRAY + "The still-beating heart of the abomination",
-                    ChatColor.DARK_PURPLE + "It pulses with unnatural energy",
-                    ChatColor.GREEN + "Said to have mysterious powers when used in rituals"
+                        NamedTextColor.GRAY + "The still-beating heart of the abomination",
+                        NamedTextColor.DARK_PURPLE + "It pulses with unnatural energy",
+                        NamedTextColor.GREEN + "Said to have mysterious powers when used in rituals"
                 ));
                 heart.setItemMeta(heartMeta);
                 return heart;
@@ -1133,10 +1171,10 @@ public class FrankensteinAssembly implements Listener {
                 }
 
                 org.bukkit.inventory.meta.ItemMeta netherMeta = netherite.getItemMeta();
-                netherMeta.setDisplayName(ChatColor.GOLD + "Abomination's " + capitalize(netheriteType.toString().split("_")[1].toLowerCase()));
+                netherMeta.setDisplayName(NamedTextColor.GOLD + "Abomination's " + capitalize(netheriteType.toString().split("_")[1].toLowerCase()));
                 netherMeta.setLore(List.of(
-                    ChatColor.GRAY + "A rare piece of netherite infused with the abomination's essence",
-                    ChatColor.DARK_PURPLE + "Its power exceeds normal enchantment limitations"
+                        NamedTextColor.GRAY + "A rare piece of netherite infused with the abomination's essence",
+                        NamedTextColor.DARK_PURPLE + "Its power exceeds normal enchantment limitations"
                 ));
                 netherite.setItemMeta(netherMeta);
                 return netherite;
@@ -1144,11 +1182,11 @@ public class FrankensteinAssembly implements Listener {
             case 2:
                 ItemStack lightningBottle = new ItemStack(Material.EXPERIENCE_BOTTLE);
                 org.bukkit.inventory.meta.ItemMeta bottleMeta = lightningBottle.getItemMeta();
-                bottleMeta.setDisplayName(ChatColor.YELLOW + "Lightning in a Bottle");
+                bottleMeta.setDisplayName(NamedTextColor.YELLOW + "Lightning in a Bottle");
                 bottleMeta.setLore(List.of(
-                    ChatColor.GRAY + "The electrical essence that animated the abomination",
-                    ChatColor.DARK_AQUA + "Throw it to summon a lightning strike",
-                    ChatColor.RED + "Use with extreme caution"
+                        NamedTextColor.GRAY + "The electrical essence that animated the abomination",
+                        NamedTextColor.DARK_AQUA + "Throw it to summon a lightning strike",
+                        NamedTextColor.RED + "Use with extreme caution"
                 ));
                 lightningBottle.setItemMeta(bottleMeta);
                 return lightningBottle;
@@ -1156,22 +1194,23 @@ public class FrankensteinAssembly implements Listener {
             case 3:
                 ItemStack brain = new ItemStack(Material.FERMENTED_SPIDER_EYE);
                 org.bukkit.inventory.meta.ItemMeta brainMeta = brain.getItemMeta();
-                brainMeta.setDisplayName(ChatColor.LIGHT_PURPLE + "Abomination's Brain");
+                brainMeta.setDisplayName(NamedTextColor.LIGHT_PURPLE + "Abomination's Brain");
                 brainMeta.setLore(List.of(
-                    ChatColor.GRAY + "The fractured mind of the creature",
-                    ChatColor.DARK_PURPLE + "Contains fragments of memories and knowledge",
-                    ChatColor.AQUA + "Powerful brewing ingredient"
+                        NamedTextColor.GRAY + "The fractured mind of the creature",
+                        NamedTextColor.DARK_PURPLE + "Contains fragments of memories and knowledge",
+                        NamedTextColor.AQUA + "Powerful brewing ingredient"
                 ));
                 brain.setItemMeta(brainMeta);
                 return brain;
 
             case 4:
             default:
+                ItemStack apple = new ItemStack(Material.APPLE);
                 org.bukkit.inventory.meta.ItemMeta appleMeta = apple.getItemMeta();
-                appleMeta.setDisplayName(ChatColor.GOLD + "Apples of Immortality");
+                appleMeta.setDisplayName(NamedTextColor.GOLD + "Apples of Immortality");
                 appleMeta.setLore(List.of(
-                    ChatColor.GRAY + "The source of the abomination's resilience",
-                    ChatColor.YELLOW + "Grants extraordinary regenerative powers"
+                        NamedTextColor.GRAY + "The source of the abomination's resilience",
+                        NamedTextColor.YELLOW + "Grants extraordinary regenerative powers"
                 ));
                 apple.setItemMeta(appleMeta);
                 return apple;
@@ -1235,13 +1274,54 @@ public class FrankensteinAssembly implements Listener {
                         .append(" ");
             }
         }
-
         return formattedName.toString().trim();
     }
 
+    @EventHandler
+    public void onAbominationHit(EntityDamageByEntityEvent event) {
+        Entity entity = event.getEntity();
+        Entity damager = event.getDamager();
+
+        if (entity instanceof ZombieVillager zombieVillager && damager instanceof Player) {
+
+            PersistentDataContainer dataContainer = zombieVillager.getPersistentDataContainer();
+            NamespacedKey isAbominationKey = new NamespacedKey(plugin, "is_frankenstein_abomination");
+
+            if (dataContainer.has(isAbominationKey, PersistentDataType.BYTE)) {
+                Player player = (Player) damager;
+                // chance to add a negative effect
+                if (random.nextInt(100) < 60) {
+                    PotionEffectType effectType = negativeEffects.get(random.nextInt(negativeEffects.size()));
+                    int duration = 60 + random.nextInt(100); // 3-8 seconds
+                    int amplifier = random.nextInt(2); // 0 or 1
+
+                    player.addPotionEffect(new PotionEffect(effectType, duration, amplifier));
+                    player.sendMessage(NamedTextColor.DARK_PURPLE + "The Abomination retaliates with a curse!");
+
+                    World world = player.getWorld();
+                    world.spawnParticle(Particle.WITCH, player.getLocation().add(0, 1, 0), 20, 0.5, 0.5, 0.5, 0.1);
+                    world.playSound(player.getLocation(), Sound.ENTITY_WITCH_HURT, 0.8f, 0.5f);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onAbominationCured(EntityTransformEvent event) {
+        if (!(event.getEntity() instanceof ZombieVillager zombieVillager)) return;
+        if (!(event.getTransformedEntity() instanceof Villager villager)) return;
+
+        PersistentDataContainer data = zombieVillager.getPersistentDataContainer();
+        NamespacedKey abominationKey = new NamespacedKey(plugin, "is_frankenstein_abomination");
+
+        if (data.has(abominationKey, PersistentDataType.BYTE)) {
+            villager.customName(Component.text(NamedTextColor.DARK_PURPLE + "The Abomination has been cured!"));
+            villager.setCustomNameVisible(true);
+        }
+    }
+
     public void saveCooldowns() {
-        // In a more complete implementation, we'd save this data to a file
-        // For now, we'll just clear the map as the cooldowns will reset on plugin restart
+        //TODO: save cooldown to file
         cooldowns.clear();
     }
 }
